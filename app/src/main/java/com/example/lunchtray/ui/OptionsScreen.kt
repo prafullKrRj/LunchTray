@@ -39,7 +39,7 @@ fun OptionsScreen(
     modifier: Modifier = Modifier,
     navController: NavHostController = rememberNavController(),
     options: List<MenuItem>,
-    onNextClick: () -> Unit,
+    onNextClick: (Int) -> Unit,
     onCancelClick: () -> Unit
 ) {
     var selectedValue by rememberSaveable { mutableStateOf(0) }
@@ -48,12 +48,12 @@ fun OptionsScreen(
             .padding(16.dp)
             .fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceBetween
     ){
         Column (Modifier.fillMaxWidth()){
             options.forEach { item ->
                 Row (
                     modifier = Modifier
+                        .fillMaxWidth()
                         .clip(RoundedCornerShape(8.dp))
                         .selectable(
                             selected = selectedValue == getIndex(item, options),
@@ -61,31 +61,33 @@ fun OptionsScreen(
                                 selectedValue = getIndex(item, options)
                             }
                         )
-                        .padding(vertical = 4.dp)
+                        .padding(vertical = 4.dp, horizontal = 4.dp)
                 ){
                     RadioButton(selected = selectedValue == getIndex(item, options), onClick = {
                         selectedValue = getIndex(item, options)
                     })
                     Column {
                         Text(text = item.name, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                        Spacer(modifier = Modifier.height(4.dp))
+                        Spacer(modifier = Modifier.height(6.dp))
                         Text(text = item.description, fontSize = 14.sp)
-                        Spacer(modifier = Modifier.height(2.dp))
+                        Spacer(modifier = Modifier.height(4.dp))
                         Text(text = item.getFormattedPrice(), fontSize = 10.sp)
                     }
                 }
                 Divider(thickness = 1.dp, modifier = Modifier.padding(vertical = 8.dp))
             }
-        }
-        Row (Modifier.fillMaxWidth()){
-            OutlinedButton(onClick = { onCancelClick() }, modifier = Modifier.weight(1f)) {
-                Text(text = stringResource(id = R.string.cancel))
+            Spacer(modifier = Modifier.height(20.dp))
+            Row (Modifier.fillMaxWidth()){
+                OutlinedButton(onClick = { onCancelClick() }, modifier = Modifier.weight(1f)) {
+                    Text(text = stringResource(id = R.string.cancel))
+                }
+                Spacer(modifier = Modifier.width(6.dp))
+                Button(onClick = { onNextClick(selectedValue) }, Modifier.weight(1f)) {
+                    Text(text = stringResource(id = R.string.next))
+                }
             }
-            Spacer(modifier = Modifier.width(6.dp))
-            Button(onClick = { onNextClick() }, Modifier.weight(1f)) {
-                Text(text = stringResource(id = R.string.next))
-            }
         }
+        
     }
 }
 private fun getIndex(item: MenuItem, options: List<MenuItem>): Int {

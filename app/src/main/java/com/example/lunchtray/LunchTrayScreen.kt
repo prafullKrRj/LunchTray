@@ -1,5 +1,7 @@
 package com.example.lunchtray
 
+import android.content.Context
+import android.content.Intent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,8 +15,10 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -24,22 +28,32 @@ import androidx.navigation.compose.rememberNavController
 import com.example.lunchtray.data.DataSource.accompanimentMenuItems
 import com.example.lunchtray.data.DataSource.entreeMenuItems
 import com.example.lunchtray.data.DataSource.sideDishMenuItems
+import com.example.lunchtray.model.LunchTrayModel
 import com.example.lunchtray.ui.OptionsScreen
+import com.example.lunchtray.ui.OrderCheckoutScreen
 import com.example.lunchtray.ui.StartOrderScreen
+import androidx.lifecycle.viewmodel.compose.viewModel
+import javax.security.auth.Subject
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LunchTrayApp(navController: NavHostController = rememberNavController()) {
+fun LunchTrayApp(navController: NavHostController = rememberNavController(), viewModel: LunchTrayModel = viewModel()) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentScreen = Screens.valueOf(
         backStackEntry?.destination?.route ?: Screens.START_SCREEN.name
     )
     Scaffold (
         topBar = { 
-            LunchTrayAppBar(canGoBack = navController.previousBackStackEntry != null, modifier = Modifier, navigateUp = {}, currentScreen = currentScreen)
+            LunchTrayAppBar(
+                canGoBack = navController.previousBackStackEntry != null,
+                modifier = Modifier,
+                navigateUp = {navController.navigateUp()},
+                currentScreen = currentScreen
+            )
         }
     ){ paddingValues ->  
         val startDestination = Screens.START_SCREEN.name
+        val uiState = viewModel.uiState.collectAsState()
         NavHost(
             navController = navController,
             startDestination = startDestination,
@@ -49,25 +63,82 @@ fun LunchTrayApp(navController: NavHostController = rememberNavController()) {
                 StartOrderScreen(navController = navController)
             }
             composable(route = Screens.CHOOSE_ENTREE.name) {
-                OptionsScreen(navController = navController, options = entreeMenuItems, onCancelClick = {}, onNextClick = {
-                    navController.navigate(route = Screens.CHOOSE_SIDE_DISH.name)
-                })
+                OptionsScreen(
+                    navController = navController,
+                    options = entreeMenuItems,
+                    onCancelClick = {cancelOrderAndNavigateToStart(viewModel, navController)},
+                    onNextClick = {
+                        navController.navigate(route = Screens.CHOOSE_SIDE_DISH.name)
+                        viewModel.setEntree(entreeMenuItems[it])
+                    }
+                )
             }
             composable(route = Screens.CHOOSE_SIDE_DISH.name) {
-                OptionsScreen(navController = navController, options = sideDishMenuItems, onCancelClick = {}, onNextClick = {
-                    navController.navigate(route = Screens.CHOOSE_ACCOMPANIMENT.name)
-                })
+                OptionsScreen(
+                    navController = navController,
+                    options = sideDishMenuItems,
+                    onCancelClick = {
+                        cancelOrderAndNavigateToStart(viewModel, navController)
+                    },
+                    onNextClick = {
+                        navController.navigate(route = Screens.CHOOSE_ACCOMPANIMENT.name)
+                        viewModel.setSideDish(sideDishMenuItems[it])
+                    }
+                )
             }
             composable(route = Screens.CHOOSE_ACCOMPANIMENT.name) {
-                OptionsScreen(navController = navController, options = accompanimentMenuItems, onCancelClick = {}, onNextClick = {
-                    navController.navigate(route = Screens.CHOOSE_SIDE_DISH.name)
-                })
+                OptionsScreen(
+                    navController = navController,
+                    options = accompanimentMenuItems,
+                    onCancelClick = {cancelOrderAndNavigateToStart(viewModel, navController)},
+                    onNextClick = {
+                        navController.navigate(route = Screens.ORDER_CHECKOUT.name)
+                        viewModel.setAccompaniment(accompanimentMenuItems[it])
+                    }
+                )
             }
+            composable(route = Screens.ORDER_CHECKOUT.name) {
+                val context = LocalContext.current
+                OrderCheckoutScreen(
+                    navController = navController,
+                    onCancelClick = { cancelOrderAndNavigateToStart(viewModel, navController) },
+                    onNextClick = {
+                          shareOrder(
+                              context = context,
+                              subject = "NEW ORDER",
+                              summary = buildString {
+                                    append("Entree: ")
+                                    append(uiState.value.entree.name)
+                                    append("\nSide Dish: ")
+                                    append(uiState.value.sideDish.name)
+                                    append("\nAccompaniment: ")
+                                    append(uiState.value.accompaniment.name)
+                                    .append("\nTotal: ")
+                                    .append("${uiState.value.total}")}
+                          )
+                    },
+                    subTotal = uiState.value.subTotal,
+                    tax = uiState.value.tax,
+                    total = uiState.value.total,
+                    list = listOf(
+                        Pair(uiState.value.entree.name, uiState.value.entree.price),
+                        Pair(uiState.value.sideDish.name, uiState.value.sideDish.price),
+                        Pair(uiState.value.accompaniment.name, uiState.value.accompaniment.price),
+                    )
+                )
+            }
+
         }
     }
 }
 
-
+private fun cancelOrderAndNavigateToStart(
+    viewModel: LunchTrayModel,
+    navController: NavHostController
+) {
+    viewModel.resetOrder()
+    navController.popBackStack(Screens.START_SCREEN.name, inclusive = false)
+}
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LunchTrayAppBar(currentScreen:Screens, canGoBack: Boolean, modifier: Modifier = Modifier, navigateUp: () -> Unit) {
@@ -94,5 +165,18 @@ fun LunchTrayAppBar(currentScreen:Screens, canGoBack: Boolean, modifier: Modifie
             }
         },
         modifier = modifier
+    )
+}
+private fun shareOrder(context: Context, subject: String, summary: String) {
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_SUBJECT, subject)
+        putExtra(Intent.EXTRA_TEXT, summary)
+    }
+    context.startActivity(
+        Intent.createChooser(
+            intent,
+            context.getString(R.string.new_Lunch_Tray)
+        )
     )
 }
